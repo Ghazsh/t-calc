@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <!--v2-->
   <meta charset="UTF-8">
   <title>Калькулятор террасы 3D</title>
   <style>
@@ -47,9 +46,9 @@
   <label>Саморезов в упаковке (шт): <input id="screwsPerPack" type="number" value="200"></label>
 
   <input type="file" id="bgUpload" accept="image/*"><br>
-  <button onclick="rebuild()">Рассчитать</button>
-  <button onclick="downloadImage()">📸 PNG</button>
-  <button onclick="downloadPDF()">📑 PDF</button>
+  <button id="btnRebuild">Рассчитать</button>
+  <button id="btnPNG">📸 PNG</button>
+  <button id="btnPDF">📑 PDF</button>
 
   <div id="results"></div>
 </div>
@@ -74,6 +73,11 @@ const loader = new THREE.TextureLoader();
 textures["wood"] = loader.load("assets/wood.jpg");
 textures["wpc"]  = loader.load("assets/wpc.jpg");
 textures["metal"] = loader.load("assets/metal.jpg");
+
+// === Привязываем кнопки ===
+document.getElementById("btnRebuild").addEventListener("click", rebuild);
+document.getElementById("btnPNG").addEventListener("click", downloadImage);
+document.getElementById("btnPDF").addEventListener("click", downloadPDF);
 
 init();
 rebuild();
