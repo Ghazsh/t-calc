@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
+  <!--v2-->
   <meta charset="UTF-8">
   <title>Калькулятор террасы 3D</title>
   <style>
@@ -55,18 +56,13 @@
 
 <canvas id="canvas"></canvas>
 
-<!-- Three.js -->
+<!-- === Модульный скрипт === -->
 <script type="module">
-  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.module.js';
-  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.153.0/examples/jsm/controls/OrbitControls.js';
-  import { DragControls } from 'https://cdn.jsdelivr.net/npm/three@0.153.0/examples/jsm/controls/DragControls.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.153.0/examples/jsm/controls/OrbitControls.js';
+import { DragControls } from 'https://cdn.jsdelivr.net/npm/three@0.153.0/examples/jsm/controls/DragControls.js';
+import { jsPDF } from 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js';
 
-  // и дальше весь твой код внутри этого <script type="module"> 
-</script>
-<!-- jsPDF -->
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-
-<script>
 let scene, camera, renderer, controls, dragControls, deckGroup;
 let objects = [];
 let rotating = false;
@@ -91,7 +87,7 @@ function init() {
   renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("canvas"), antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
 
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls = new OrbitControls(camera, renderer.domElement);
 
   const light = new THREE.DirectionalLight(0xffffff, 1);
   light.position.set(10, 10, 10);
@@ -161,8 +157,7 @@ function rebuild() {
 
   // === доски ===
   const boardGeometry = new THREE.BoxGeometry(boardLength, 0.03, boardWidth);
-  // const boardMaterial = new THREE.MeshLambertMaterial({ map: textures[materialType] });
-  const boardMaterial = new THREE.MeshLambertMaterial({ color: 0x8B5A2B });
+  const boardMaterial = new THREE.MeshLambertMaterial({ map: textures[materialType] });
 
   for (let r = 0; r < rows; r++) {
     for (let b = 0; b < boardsPerRow; b++) {
@@ -189,7 +184,7 @@ function rebuild() {
   objects.push(deckGroup);
 
   // drag
-  dragControls = new THREE.DragControls(objects, camera, renderer.domElement);
+  dragControls = new DragControls(objects, camera, renderer.domElement);
   dragControls.addEventListener('dragstart', () => controls.enabled = false);
   dragControls.addEventListener('dragend', () => controls.enabled = true);
 
@@ -228,15 +223,11 @@ function downloadImage() {
 }
 
 // PDF
-async function downloadPDF() {
-  const { jsPDF } = window.jspdf;
+function downloadPDF() {
   const pdf = new jsPDF();
-
-  // скриншот
   const imgData = renderer.domElement.toDataURL('image/png');
   pdf.addImage(imgData, 'PNG', 10, 10, 180, 100);
 
-  // текст
   const lines = lastResults.trim().split("\n");
   let y = 120;
   pdf.setFontSize(12);
@@ -245,7 +236,6 @@ async function downloadPDF() {
     y += 6;
   });
 
-  // дата
   const now = new Date();
   pdf.text("Дата: " + now.toLocaleDateString() + " " + now.toLocaleTimeString(), 10, y + 10);
 
@@ -254,9 +244,3 @@ async function downloadPDF() {
 </script>
 </body>
 </html>
-
-
-
-
-
-
