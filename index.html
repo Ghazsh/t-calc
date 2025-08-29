@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Калькулятор террасы 3D</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+    #ui { 
+      position: absolute; top: 10px; left: 10px; 
+      background: #fff; padding: 10px; z-index: 10;
+      border: 1px solid #ccc; border-radius: 6px; 
+      font-size: 14px;
+      max-width: 350px;
+    }
+    #results { margin-top: 10px; font-size: 14px; }
+    label { display: block; margin-top: 5px; }
+    input, select, button { margin-top: 5px; width: 100px; }
+  </style>
+</head>
+<body>
+<div id="ui">
+  <h3>Калькулятор террасы 3D</h3>
+
+  <!-- размеры -->
+  <label>Длина (м): <input id="length" type="number" value="4" step="0.1"></label>
+  <label>Ширина (м): <input id="width" type="number" value="3" step="0.1"></label>
+  <label>Длина доски (м): <input id="boardLength" type="number" value="4" step="0.1"></label>
+  <label>Ширина доски (мм): <input id="boardWidth" type="number" value="140"></label>
+  <label>Зазор (мм): <input id="gap" type="number" value="5"></label>
+  <label>Шаг лаг (м): <input id="lagStep" type="number" value="0.5" step="0.1"></label>
+
+  <!-- материал -->
+  <label>Материал:
+    <select id="material">
+      <option value="wood">Дерево</option>
+      <option value="wpc">Композит</option>
+      <option value="metal">Металл</option>
+    </select>
+  </label>
+
+  <!-- цены -->
+  <h4>Цены</h4>
+  <label>Цена доски (₽/шт): <input id="priceBoard" type="number" value="500"></label>
+  <label>Цена лаги (₽/шт): <input id="priceLag" type="number" value="300"></label>
+  <label>Цена упаковки саморезов (₽): <input id="priceScrewPack" type="number" value="2000"></label>
+  <label>Саморезов в упаковке (шт): <input id="screwsPerPack" type="number" value="200"></label>
+
+  <input type="file" id="bgUpload" accept="image/*"><br>
+  <button onclick="rebuild()">Рассчитать</button>
+  <button onclick="downloadImage()">📸 PNG</button>
+  <button onclick="downloadPDF()">📑 PDF</button>
+
+  <div id="results"></div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<!-- Three.js -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.153.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.153.0/examples/js/controls/DragControls.js"></script>
+<!-- jsPDF -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<script>
+let scene, camera, renderer, controls, dragControls, deckGroup;
+let objects = [];
+let rotating = false;
+let lastResults = "";
+let textures = {};
+
+// === Загружаем текстуры материалов ===
+const loader = new THREE.TextureLoader();
+textures["wood"] = loader.load("assets/wood.jpg");
+textures["wpc"]  = loader.load("assets/wpc.jpg");
+textures["metal"] = loader.load("assets/metal.jpg");
+
+init();
+rebuild();
+
+function init() {
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(6, 6, 8);
+
+  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("canvas"), antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(10, 10, 10);
+  scene.add(light);
+  scene.add(new THREE.AmbientLight(0x808080));
+
+  animate();
+
+  // фон
+  document.getElementById("bgUpload").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const texture = new THREE.TextureLoader().load(event.target.result);
+      scene.background = texture;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // масштаб колесом
+  renderer.domElement.addEventListener("wheel", (event) => {
+    if (!deckGroup) return;
+    const scaleFactor = event.deltaY < 0 ? 1.1 : 0.9;
+    deckGroup.scale.multiplyScalar(scaleFactor);
+  });
+
+  // вращение ПКМ
+  renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+  renderer.domElement.addEventListener("mousedown", (e) => { if (e.button === 2) rotating = true; });
+  renderer.domElement.addEventListener("mouseup", (e) => { if (e.button === 2) rotating = false; });
+  renderer.domElement.addEventListener("mousemove", (e) => {
+    if (rotating && deckGroup) deckGroup.rotation.y += e.movementX * 0.01;
+  });
+}
+
+function rebuild() {
+  if (deckGroup) { scene.remove(deckGroup); objects = []; }
+  deckGroup = new THREE.Group();
+
+  const terraceLength = parseFloat(document.getElementById("length").value);
+  const terraceWidth = parseFloat(document.getElementById("width").value);
+  const boardLength = parseFloat(document.getElementById("boardLength").value);
+  const boardWidth = parseFloat(document.getElementById("boardWidth").value) / 1000;
+  const gap = parseFloat(document.getElementById("gap").value) / 1000;
+  const lagStep = parseFloat(document.getElementById("lagStep").value);
+  const materialType = document.getElementById("material").value;
+
+  const rows = Math.floor(terraceWidth / (boardWidth + gap));
+  const boardsPerRow = Math.ceil(terraceLength / boardLength);
+  const boardsTotal = rows * boardsPerRow;
+  const lagsCount = Math.floor(terraceLength / lagStep) + 1;
+  const screwsCount = boardsTotal * lagsCount * 2;
+  const area = (terraceLength * terraceWidth).toFixed(2);
+
+  // === цены ===
+  const priceBoard = parseFloat(document.getElementById("priceBoard").value);
+  const priceLag = parseFloat(document.getElementById("priceLag").value);
+  const priceScrewPack = parseFloat(document.getElementById("priceScrewPack").value);
+  const screwsPerPack = parseFloat(document.getElementById("screwsPerPack").value);
+
+  const packsNeeded = Math.ceil(screwsCount / screwsPerPack);
+  const costBoards = boardsTotal * priceBoard;
+  const costLags = lagsCount * priceLag;
+  const costScrews = packsNeeded * priceScrewPack;
+  const totalCost = costBoards + costLags + costScrews;
+
+  // === доски ===
+  const boardGeometry = new THREE.BoxGeometry(boardLength, 0.03, boardWidth);
+  const boardMaterial = new THREE.MeshLambertMaterial({ map: textures[materialType] });
+
+  for (let r = 0; r < rows; r++) {
+    for (let b = 0; b < boardsPerRow; b++) {
+      const board = new THREE.Mesh(boardGeometry, boardMaterial);
+      board.position.set(
+        -terraceLength/2 + boardLength/2 + b * boardLength,
+        0,
+        -terraceWidth/2 + (boardWidth/2) + r * (boardWidth + gap)
+      );
+      deckGroup.add(board);
+    }
+  }
+
+  // === лаги ===
+  const lagGeometry = new THREE.BoxGeometry(0.05, 0.1, terraceWidth);
+  const lagMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+  for (let i = 0; i < lagsCount; i++) {
+    const lag = new THREE.Mesh(lagGeometry, lagMaterial);
+    lag.position.set(-terraceLength/2 + i * lagStep, -0.07, 0);
+    deckGroup.add(lag);
+  }
+
+  scene.add(deckGroup);
+  objects.push(deckGroup);
+
+  // drag
+  dragControls = new THREE.DragControls(objects, camera, renderer.domElement);
+  dragControls.addEventListener('dragstart', () => controls.enabled = false);
+  dragControls.addEventListener('dragend', () => controls.enabled = true);
+
+  // результаты
+  lastResults = `
+Площадь: ${area} м²
+Размеры: ${terraceWidth} × ${terraceLength} м
+Рядов досок: ${rows}
+Досок в ряду: ${boardsPerRow}
+Всего досок: ${boardsTotal}
+Лаг: ${lagsCount}
+Саморезов: ${screwsCount}
+Упаковок саморезов: ${packsNeeded}
+
+Стоимость досок: ${costBoards.toFixed(2)} ₽
+Стоимость лаг: ${costLags.toFixed(2)} ₽
+Стоимость саморезов: ${costScrews.toFixed(2)} ₽
+ИТОГО: ${totalCost.toFixed(2)} ₽
+  `;
+
+  document.getElementById("results").innerHTML = lastResults.replace(/\n/g,"<br>");
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+// PNG
+function downloadImage() {
+  const link = document.createElement('a');
+  link.download = 'terrace_report.png';
+  link.href = renderer.domElement.toDataURL('image/png');
+  link.click();
+}
+
+// PDF
+async function downloadPDF() {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF();
+
+  // скриншот
+  const imgData = renderer.domElement.toDataURL('image/png');
+  pdf.addImage(imgData, 'PNG', 10, 10, 180, 100);
+
+  // текст
+  const lines = lastResults.trim().split("\n");
+  let y = 120;
+  pdf.setFontSize(12);
+  lines.forEach(line => {
+    pdf.text(line.trim(), 10, y);
+    y += 6;
+  });
+
+  // дата
+  const now = new Date();
+  pdf.text("Дата: " + now.toLocaleDateString() + " " + now.toLocaleTimeString(), 10, y + 10);
+
+  pdf.save("terrace_report.pdf");
+}
+</script>
+</body>
+</html>
