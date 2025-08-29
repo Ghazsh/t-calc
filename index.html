@@ -157,7 +157,8 @@ function rebuild() {
 
   // === доски ===
   const boardGeometry = new THREE.BoxGeometry(boardLength, 0.03, boardWidth);
-  const boardMaterial = new THREE.MeshLambertMaterial({ map: textures[materialType] });
+  // const boardMaterial = new THREE.MeshLambertMaterial({ map: textures[materialType] });
+  const boardMaterial = new THREE.MeshLambertMaterial({ color: 0x8B5A2B });
 
   for (let r = 0; r < rows; r++) {
     for (let b = 0; b < boardsPerRow; b++) {
@@ -249,3 +250,4 @@ async function downloadPDF() {
 </script>
 </body>
 </html>
+
